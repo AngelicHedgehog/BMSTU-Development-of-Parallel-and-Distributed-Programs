@@ -29,14 +29,14 @@ class SLESolver:
         cls,
         matrix_a: np.matrix[float, float],
         vector_b: np.ndarray[None, float],
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-10,
     ) -> (np.ndarray[float, float] | None):
 
         N = vector_b.shape[0]
         assert matrix_a.shape == (N, N)
         assert vector_b.shape == (N, 1)
 
-        tau = .01 / N
+        tau = .0001 / N
         last_iter_measure = None
         vector_x = np.full((N, 1), 0)
         for _ in iter(int, 1):
