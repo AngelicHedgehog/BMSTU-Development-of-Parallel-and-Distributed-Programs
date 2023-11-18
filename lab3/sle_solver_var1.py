@@ -57,6 +57,7 @@ class SLESolver:
 
         return vector_x
 
+
 def openmp_matrix_dot(
     matrix_a: np.matrix[float, float],
     vector_x: np.ndarray[None, float],
@@ -70,8 +71,7 @@ def openmp_matrix_dot(
     return np.matrix(res_matrix).transpose()
 
 
-# num_threads = int(input())
-num_threads = 1
+num_threads = 2
 
 _matrix_a = np.matrix([
     [9.,  1.,  3., -7.,  9., -0., -9.,  7.],
