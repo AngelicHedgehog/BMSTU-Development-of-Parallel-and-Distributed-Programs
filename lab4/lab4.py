@@ -12,10 +12,6 @@ class CircleTable:
 
     @dataclass
     class __Fork:
-        class __Philosopher:
-            ...
-        left_philosopher: __Philosopher | None = None
-        right_philosopher: __Philosopher | None = None
         lock: threading.Lock = field(default_factory=threading.Lock)
 
     class __Philosopher:
@@ -29,20 +25,41 @@ class CircleTable:
             PUTS_FORKS_IN_PLACE = 'puts forks in plase\t'
             CHILLING = 'chilling\t\t\t'
 
-        def __init__(self):
-            self.number = -1
-            self.left_fork: CircleTable.__Fork | None = None
-            self.right_fork: CircleTable.__Fork | None = None
+        def __init__(self, right_fork, left_philosopher=None):
+            right_fork: CircleTable.__Fork = right_fork
+            left_philosopher: CircleTable.__Philosopher = left_philosopher
+
             self.state = self.__PhilosopherState.PONDERS
 
-        def start_meals(self):
+            if left_philosopher is None:
+                self.__number: int = 1
+
+                self.right_philosopher = self
+                self.left_fork = right_fork
+                self.right_fork = right_fork
+            else:
+                self.__number: int = left_philosopher.get_number() + 1
+
+                self.right_philosopher = \
+                    left_philosopher.right_philosopher
+                self.left_fork = left_philosopher.right_fork
+                self.right_fork = right_fork
+
+                self.right_philosopher.left_fork = right_fork
+                left_philosopher.right_philosopher = self
+
+        def get_number(self) -> int:
+            return self.__number
+
+        def start_meals(self) -> None:
             while True:
                 match self.state:
                     case self.__PhilosopherState.PONDERS:
+
                         time_to_ponders = random.uniform(1, 10)
                         logging.debug(
                             '__Philosopher\t#%d\t%s in %f seconds',
-                            self.number,
+                            self.get_number(),
                             self.state.value,
                             time_to_ponders)
                         time.sleep(time_to_ponders)
@@ -55,7 +72,7 @@ class CircleTable:
                         time_to_take_left = random.uniform(2, 4)
                         logging.debug(
                             '__Philosopher\t#%d\t%s in %f seconds',
-                            self.number,
+                            self.get_number(),
                             self.state.value,
                             time_to_take_left)
                         time.sleep(time_to_take_left)
@@ -65,7 +82,7 @@ class CircleTable:
                         time_to_put_left = random.uniform(1, 2)
                         logging.debug(
                             '__Philosopher\t#%d\t%s in %f seconds',
-                            self.number,
+                            self.get_number(),
                             self.state.value,
                             time_to_put_left)
                         time.sleep(time_to_put_left)
@@ -76,9 +93,9 @@ class CircleTable:
                     case self.__PhilosopherState.TAKES_RIGHT_FORK:
 
                         if self.right_fork.lock.locked():
-                            if (self.right_fork.right_philosopher.state ==
+                            if (self.right_philosopher.state ==
                                     self.__PhilosopherState.TAKES_RIGHT_FORK):
-                                self.right_fork.right_philosopher.state = \
+                                self.right_philosopher.state = \
                                     self.__PhilosopherState.PUTS_LEFT_FORK
                             continue
 
@@ -87,17 +104,18 @@ class CircleTable:
                         time_to_take_right = random.uniform(2, 4)
                         logging.debug(
                             '__Philosopher\t#%d\t%s in %f seconds',
-                            self.number,
+                            self.get_number(),
                             self.state.value,
                             time_to_take_right)
                         time.sleep(time_to_take_right)
 
                         self.state = self.__PhilosopherState.EATING
                     case self.__PhilosopherState.EATING:
+
                         time_to_eating = random.uniform(5, 10)
                         logging.debug(
                             '__Philosopher\t#%d\t%s in %f seconds',
-                            self.number,
+                            self.get_number(),
                             self.state.value,
                             time_to_eating)
                         time.sleep(time_to_eating)
@@ -105,10 +123,11 @@ class CircleTable:
                         self.state = \
                             self.__PhilosopherState.PUTS_FORKS_IN_PLACE
                     case self.__PhilosopherState.PUTS_FORKS_IN_PLACE:
+
                         time_to_put = random.uniform(1, 2)
                         logging.debug(
                             '__Philosopher\t#%d\t%s in %f seconds',
-                            self.number,
+                            self.get_number(),
                             self.state.value,
                             time_to_put)
                         time.sleep(time_to_put)
@@ -121,66 +140,38 @@ class CircleTable:
                         return
 
     def __init__(self):
-        self.__philosophers: list[self.__Philosopher] = []
-        self.__ph_dict: dict[int, self.__Philosopher] = {}
-        self.__forks: list[self.__Fork] = []
+        self.__last_philosopher: CircleTable.__Philosopher | None = None
 
-    def add_philosopher(self):
-        new_phil = self.__Philosopher()
-        new_fork = self.__Fork()
+    def add_philosopher(self) -> None:
+        self.__last_philosopher = self.__Philosopher(
+            self.__Fork(), self.__last_philosopher)
 
-        new_phil.right_fork = new_fork
-        new_fork.left_philosopher = new_phil
-
-        if len(self.__philosophers) == 0:
-            new_phil.left_fork = new_fork
-            new_fork.right_philosopher = new_phil
-
-            self.__philosophers.append(new_phil)
-            self.__forks.append(new_fork)
+    def start_meals(self, log_dataframe: DataFrame | None = None) -> None:
+        if self.__last_philosopher is None:
             return
 
-        neighbor: self.__Philosopher = random.choice(self.__philosophers)
+        threads: set[threading.Thread] = set()
 
-        self.__philosophers.append(new_phil)
-        self.__forks.append(new_fork)
-
-        new_phil.left_fork = neighbor.left_fork
-        new_phil.left_fork.right_philosopher = new_phil
-
-        neighbor.left_fork = new_fork
-        new_fork.right_philosopher = neighbor
-
-    def __count_off(self):
-        phil: self.__Philosopher = random.choice(self.__philosophers)
-
-        if phil.number != -1:
-            return
-
-        while phil.number != len(self.__philosophers):
-            phil_num = phil.number
-            phil = phil.right_fork.right_philosopher
-            phil.number = phil_num + 1
-
-            if phil.number > 0:
-                self.__ph_dict[phil.number] = phil
-
-    def start_meals(self, log_dataframe: DataFrame | None = None):
-        self.__count_off()
-
-        threads: threading.Thread = set()
-
-        for ph in self.__philosophers:
+        ph = self.__last_philosopher
+        while True:
+            ph = ph.right_philosopher
             threads.add(threading.Thread(target=ph.start_meals))
+            if ph == self.__last_philosopher:
+                break
 
         for th in threads:
             th.start()
 
         if log_dataframe is not None:
             while True:
-                statuses = [
-                    self.__ph_dict[i].state.value.strip()
-                    for i in range(1, len(self.__philosophers) + 1)]
+                statuses: list[str] = []
+
+                ph = self.__last_philosopher
+                while True:
+                    ph = ph.right_philosopher
+                    statuses.append(ph.state.value.strip())
+                    if ph == self.__last_philosopher:
+                        break
 
                 if len(log_dataframe.index) > 0:
                     next_time_step = log_dataframe.index[-1] + 1
