@@ -22,8 +22,7 @@ class CircleTable:
             PUTS_LEFT_FORK = 'puts left fork\t\t'
             TAKES_RIGHT_FORK = 'takes right fork\t'
             EATING = 'eating\t\t\t'
-            PUTS_FORKS_IN_PLACE = 'puts forks in plase\t'
-            CHILLING = 'chilling\t\t\t'
+            PUTS_FORKS_IN_PLACE = 'puts forks in place\t'
 
         def __init__(self, right_fork, left_philosopher=None):
             right_fork: CircleTable.__Fork = right_fork
@@ -51,8 +50,10 @@ class CircleTable:
         def get_number(self) -> int:
             return self.__number
 
-        def start_meals(self) -> None:
-            while True:
+        def start_meals(self, timeout) -> None:
+            end_time = time.time() + timeout
+
+            while time.time() < end_time:
                 match self.state:
                     case self.__PhilosopherState.PONDERS:
 
@@ -62,10 +63,15 @@ class CircleTable:
                             self.get_number(),
                             self.state.value,
                             time_to_ponders)
+                        if time.time() + time_to_ponders >= end_time:
+                            break
                         time.sleep(time_to_ponders)
 
                         self.state = self.__PhilosopherState.TAKES_LEFT_FORK
                     case self.__PhilosopherState.TAKES_LEFT_FORK:
+
+                        if self.left_fork.lock.locked():
+                            continue
 
                         self.left_fork.lock.acquire()
 
@@ -75,16 +81,21 @@ class CircleTable:
                             self.get_number(),
                             self.state.value,
                             time_to_take_left)
+                        if time.time() + time_to_take_left >= end_time:
+                            break
                         time.sleep(time_to_take_left)
 
                         self.state = self.__PhilosopherState.TAKES_RIGHT_FORK
                     case self.__PhilosopherState.PUTS_LEFT_FORK:
+
                         time_to_put_left = random.uniform(1, 2)
                         logging.debug(
                             '__Philosopher\t#%d\t%s in %f seconds',
                             self.get_number(),
                             self.state.value,
                             time_to_put_left)
+                        if time.time() + time_to_put_left >= end_time:
+                            break
                         time.sleep(time_to_put_left)
 
                         self.left_fork.lock.release()
@@ -107,6 +118,8 @@ class CircleTable:
                             self.get_number(),
                             self.state.value,
                             time_to_take_right)
+                        if time.time() + time_to_take_right >= end_time:
+                            break
                         time.sleep(time_to_take_right)
 
                         self.state = self.__PhilosopherState.EATING
@@ -118,6 +131,8 @@ class CircleTable:
                             self.get_number(),
                             self.state.value,
                             time_to_eating)
+                        if time.time() + time_to_eating >= end_time:
+                            break
                         time.sleep(time_to_eating)
 
                         self.state = \
@@ -130,14 +145,23 @@ class CircleTable:
                             self.get_number(),
                             self.state.value,
                             time_to_put)
+                        if time.time() + time_to_put >= end_time:
+                            break
                         time.sleep(time_to_put)
 
                         self.left_fork.lock.release()
                         self.right_fork.lock.release()
 
-                        self.state = self.__PhilosopherState.CHILLING
-                    case self.__PhilosopherState.CHILLING:
-                        return
+                        self.state = self.__PhilosopherState.PONDERS
+
+            match self.state:
+                case (self.__PhilosopherState.PUTS_LEFT_FORK |
+                        self.__PhilosopherState.TAKES_RIGHT_FORK):
+                    self.left_fork.lock.release()
+                case (self.__PhilosopherState.EATING |
+                        self.__PhilosopherState.PUTS_FORKS_IN_PLACE):
+                    self.left_fork.lock.release()
+                    self.right_fork.lock.release()
 
     def __init__(self):
         self.__last_philosopher: CircleTable.__Philosopher | None = None
@@ -146,7 +170,11 @@ class CircleTable:
         self.__last_philosopher = self.__Philosopher(
             self.__Fork(), self.__last_philosopher)
 
-    def start_meals(self, log_dataframe: DataFrame | None = None) -> None:
+    def start_meals(
+        self,
+        timeout: int = 40,
+        log_dataframe: DataFrame | None = None
+    ) -> None:
         if self.__last_philosopher is None:
             return
 
@@ -155,7 +183,8 @@ class CircleTable:
         ph = self.__last_philosopher
         while True:
             ph = ph.right_philosopher
-            threads.add(threading.Thread(target=ph.start_meals))
+            threads.add(threading.Thread(
+                target=ph.start_meals, kwargs={'timeout': timeout}))
             if ph == self.__last_philosopher:
                 break
 
@@ -163,6 +192,8 @@ class CircleTable:
             th.start()
 
         if log_dataframe is not None:
+            current_time = 0
+
             while True:
                 statuses: list[str] = []
 
@@ -173,14 +204,12 @@ class CircleTable:
                     if ph == self.__last_philosopher:
                         break
 
-                if len(log_dataframe.index) > 0:
-                    next_time_step = log_dataframe.index[-1] + 1
-                else:
-                    next_time_step = 0
-                log_dataframe.loc[next_time_step] = statuses
+                log_dataframe.loc[current_time] = statuses
 
                 if all(not th.is_alive() for th in threads):
                     break
+
+                current_time += 1
                 time.sleep(1)
 
         for th in threads:
@@ -201,6 +230,7 @@ if __name__ == '__main__':
                              for i in range(1, N + 1)])
     log.index.name = 'time_slice'
 
-    table.start_meals(log)
+    table.start_meals(timeout=180, log_dataframe=log)
 
     print(log)
+    log.to_excel("lab4/lad4.log.xlsx")
